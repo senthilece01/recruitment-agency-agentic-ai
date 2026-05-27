@@ -1,11 +1,11 @@
-# Recruitment Agency — True Multi-Agent Workflow
+# Recruitment Agency — Agentic AI Candidate Screening
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
 ![LangGraph](https://img.shields.io/badge/LangGraph-0.3+-green)
 ![LangChain](https://img.shields.io/badge/LangChain-0.3+-blue)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-purple?logo=openai)
 
-A **true multi-agent AI system** built with LangGraph where each agent has its own LLM instance, dedicated tools, a reasoning loop (ReAct), and a clear responsibility boundary. This is a step up from a simple conditional workflow — each agent autonomously decides _how_ to use its tools to accomplish its goal.
+A **true Agentic AI system** built with LangGraph where each agent has its own LLM instance, dedicated tools, a reasoning loop (ReAct), and a clear responsibility boundary. This is a step up from a simple conditional workflow — each agent autonomously decides _how_ to use its tools to accomplish its goal.
 
 ---
 
