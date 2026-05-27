@@ -5,20 +5,20 @@
 ![LangChain](https://img.shields.io/badge/LangChain-0.3+-blue)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-purple?logo=openai)
 
-A **true multi-agent AI system** built with LangGraph where each agent has its own LLM instance, dedicated tools, a reasoning loop (ReAct), and a clear responsibility boundary. This is a step up from a simple conditional workflow — each agent autonomously decides *how* to use its tools to accomplish its goal.
+A **true multi-agent AI system** built with LangGraph where each agent has its own LLM instance, dedicated tools, a reasoning loop (ReAct), and a clear responsibility boundary. This is a step up from a simple conditional workflow — each agent autonomously decides _how_ to use its tools to accomplish its goal.
 
 ---
 
 ## What Makes This "Multi-Agent"?
 
-| Feature | v1 (Conditional Workflow) | v2 (This Project) |
-|---|---|---|
-| LLM calls | 2 shared calls | 3 independent agents |
-| Tools per agent | None | 3 tools each |
-| Reasoning loop | No | Yes (ReAct) |
-| Agent autonomy | No | Yes |
-| Memory/State | Minimal | Shared typed state |
-| Actions taken | Text response only | Emails, invites, audit log |
+| Feature         | This Project               |
+| --------------- | -------------------------- |
+| LLM calls       | 3 independent agents       |
+| Tools per agent | 3 tools each               |
+| Reasoning loop  | Yes (ReAct)                |
+| Agent autonomy  | Yes                        |
+| Memory/State    | Shared typed state         |
+| Actions taken   | Emails, invites, audit log |
 
 ---
 
@@ -76,11 +76,11 @@ A **true multi-agent AI system** built with LangGraph where each agent has its o
 
 **Goal**: Parse the incoming application and extract structured candidate data.
 
-| Tool | What it does |
-|---|---|
-| `parse_resume` | Extracts skill keywords from application text |
+| Tool                          | What it does                                                         |
+| ----------------------------- | -------------------------------------------------------------------- |
+| `parse_resume`                | Extracts skill keywords from application text                        |
 | `extract_years_of_experience` | Detects years of experience via regex → maps to Entry / Mid / Senior |
-| `query_candidate_db` | Checks in-memory DB for duplicate candidates |
+| `query_candidate_db`          | Checks in-memory DB for duplicate candidates                         |
 
 **Outputs to state**: `skills_extracted`, `years_of_experience`, `experience_level`
 
@@ -90,11 +90,11 @@ A **true multi-agent AI system** built with LangGraph where each agent has its o
 
 **Goal**: Determine if the candidate is technically suitable for the open role.
 
-| Tool | What it does |
-|---|---|
+| Tool                      | What it does                                                    |
+| ------------------------- | --------------------------------------------------------------- |
 | `search_job_requirements` | Fetches required skills for the target role from mock job board |
-| `run_skill_gap_analysis` | Computes matched/missing skills and a 0–100 score |
-| `get_market_demand` | Checks market demand for the candidate's top skill |
+| `run_skill_gap_analysis`  | Computes matched/missing skills and a 0–100 score               |
+| `get_market_demand`       | Checks market demand for the candidate's top skill              |
 
 **Outputs to state**: `required_skills`, `matched_skills`, `missing_skills`, `skill_score`, `skill_match`
 
@@ -104,17 +104,17 @@ A **true multi-agent AI system** built with LangGraph where each agent has its o
 
 **Goal**: Take the final hiring action based on the previous agents' findings.
 
-| Decision | Condition | Actions |
-|---|---|---|
-| **Interview** | skill_match == "Match" | Send invitation email + create calendar invite |
-| **Escalate** | No match + Senior-level | Send escalation email to senior recruiter |
-| **Reject** | No match + Entry/Mid-level | Send polite rejection email |
+| Decision      | Condition                  | Actions                                        |
+| ------------- | -------------------------- | ---------------------------------------------- |
+| **Interview** | skill_match == "Match"     | Send invitation email + create calendar invite |
+| **Escalate**  | No match + Senior-level    | Send escalation email to senior recruiter      |
+| **Reject**    | No match + Entry/Mid-level | Send polite rejection email                    |
 
-| Tool | What it does |
-|---|---|
-| `send_email` | Logs a mock email to the in-memory action log |
+| Tool                     | What it does                                       |
+| ------------------------ | -------------------------------------------------- |
+| `send_email`             | Logs a mock email to the in-memory action log      |
 | `create_calendar_invite` | Creates a mock calendar invite 3 business days out |
-| `log_candidate_decision` | Records final decision to audit log |
+| `log_candidate_decision` | Records final decision to audit log                |
 
 ---
 
@@ -166,12 +166,12 @@ recruitment_agency_workflow_v2/
 
 ## Test Cases
 
-| Candidate | Experience | Skills | Expected Decision |
-|---|---|---|---|
-| 8yr Python Dev | Senior-level | Python, Django, FastAPI, Docker | **Interview** |
-| 10yr Java Dev  | Senior-level | Java, Spring, Kubernetes | **Escalate** |
-| 1yr C++ Dev    | Entry-level  | C++ | **Reject** |
-| 4yr Python Dev | Mid-level    | Python, FastAPI, PostgreSQL | **Interview** |
+| Candidate      | Experience   | Skills                          | Expected Decision |
+| -------------- | ------------ | ------------------------------- | ----------------- |
+| 8yr Python Dev | Senior-level | Python, Django, FastAPI, Docker | **Interview**     |
+| 10yr Java Dev  | Senior-level | Java, Spring, Kubernetes        | **Escalate**      |
+| 1yr C++ Dev    | Entry-level  | C++                             | **Reject**        |
+| 4yr Python Dev | Mid-level    | Python, FastAPI, PostgreSQL     | **Interview**     |
 
 ---
 
@@ -217,7 +217,7 @@ Agent receives input
   → Returns final response
 ```
 
-This is fundamentally different from a simple prompt → LLM call. The agent autonomously decides *which* tools to use, *in what order*, and *when to stop*.
+This is fundamentally different from a simple prompt → LLM call. The agent autonomously decides _which_ tools to use, _in what order_, and _when to stop_.
 
 ---
 
