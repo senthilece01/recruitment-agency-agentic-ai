@@ -1,4 +1,4 @@
-# Recruitment Agency — True Multi-Agent Workflow
+# Recruitment Agency — Agentic AI Candidate Screening
 
 ![Python](https://img.shields.io/badge/Python-3.11+-blue?logo=python)
 ![LangGraph](https://img.shields.io/badge/LangGraph-0.3+-green)
