@@ -5,7 +5,7 @@
 ![LangChain](https://img.shields.io/badge/LangChain-0.3+-blue)
 ![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-purple?logo=openai)
 
-A **true multi-agent AI system** built with LangGraph where each agent has its own LLM instance, dedicated tools, a reasoning loop (ReAct), and a clear responsibility boundary. This is a step up from a simple conditional workflow — each agent autonomously decides *how* to use its tools to accomplish its goal.
+A **true Agentic AI system** built with LangGraph where each agent has its own LLM instance, dedicated tools, a reasoning loop (ReAct), and a clear responsibility boundary. This is a step up from a simple conditional workflow — each agent autonomously decides *how* to use its tools to accomplish its goal.
 
 ---
 
