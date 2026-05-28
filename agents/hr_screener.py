@@ -13,6 +13,7 @@ Tools available:
   - extract_years_of_experience
 """
 import os
+import re
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import HumanMessage
@@ -76,6 +77,31 @@ def hr_screener_node(state: RecruitmentState) -> dict:
                 years_of_experience = data.get("years_of_experience", 0)
                 experience_level    = data.get("experience_level", "Entry-level")
 
+    # Extract candidate name from the application text directly (most reliable)
+    # Try explicit "Name:" label first, then fall back to LLM summary
+    candidate_name = "Unknown"
+    application_text = state["application"]
+
+    # Pattern 1: explicit label in resume text e.g. "Name: Alice Johnson"
+    name_match = re.search(
+        r"^(?:name|full name|candidate name)\s*[:\-]\s*(.+)$",
+        application_text,
+        re.MULTILINE | re.IGNORECASE,
+    )
+    if name_match:
+        candidate_name = name_match.group(1).strip()
+    else:
+        # Pattern 2: extract from LLM summary — labelled line
+        for pattern in [
+            r"(?:candidate(?:'s)? name|name)\s*[:\-]\s*\*{0,2}([A-Z][a-z]+(?: [A-Z][a-z]+)+)\*{0,2}",
+            r"\*\*([A-Z][a-z]+(?: [A-Z][a-z]+)+)\*\*",
+        ]:
+            match = re.search(pattern, final_message, re.MULTILINE)
+            if match:
+                candidate_name = match.group(1).strip()
+                break
+
+    print(f"  Candidate name : {candidate_name}")
     print(f"  Skills found   : {skills_extracted}")
     print(f"  Experience     : {years_of_experience} year(s) → {experience_level}")
 
@@ -83,6 +109,6 @@ def hr_screener_node(state: RecruitmentState) -> dict:
         "skills_extracted": skills_extracted,
         "years_of_experience": years_of_experience,
         "experience_level": experience_level,
-        "candidate_name": "Unknown",
+        "candidate_name": candidate_name,
         "messages": result["messages"],
     }

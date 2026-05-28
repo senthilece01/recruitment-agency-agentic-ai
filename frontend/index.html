@@ -804,9 +804,10 @@
       /* ── Agent pipeline steps ────────────────────────────────────────── */
       .pipeline-wrap {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         gap: 0;
         margin: 24px 0;
+        min-width: 360px;
       }
 
       .pipeline-step {
@@ -814,8 +815,9 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
         position: relative;
+        min-width: 0;
       }
 
       .pipeline-step::after {
@@ -1874,7 +1876,13 @@ I have built several production APIs and enjoy working with modern Python framew
                 return (
                   <div key={i} className={`pipeline-step ${cls}`}>
                     <div className="step-circle">{isDone ? "✓" : stepNum}</div>
-                    <div>
+                    <div
+                      style={{
+                        textAlign: "center",
+                        width: "100%",
+                        padding: "0 4px",
+                      }}
+                    >
                       <div className="step-label">{s.label}</div>
                       <div className="step-sub">{s.sub}</div>
                     </div>
