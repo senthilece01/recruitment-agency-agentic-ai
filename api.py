@@ -133,6 +133,7 @@ class ScreenResponse(BaseModel):
     id: str
     screened_at: str
     job_role: str
+    application_text: str = ""
     state: dict
     action_log: list[dict]
 
@@ -218,12 +219,13 @@ def _run_pipeline(application_text: str, job_role: str, job_id: Optional[str] = 
     serialisable_state = {k: v for k, v in result.items() if k != "messages"}
 
     record = {
-        "id":          candidate_id,
-        "screened_at": screened_at,
-        "job_role":    job_role,
-        "job_id":      job_id,
-        "state":       serialisable_state,
-        "action_log":  candidate_action_log,
+        "id":               candidate_id,
+        "screened_at":      screened_at,
+        "job_role":         job_role,
+        "job_id":           job_id,
+        "application_text": application_text,
+        "state":            serialisable_state,
+        "action_log":       candidate_action_log,
     }
 
     _save_record(record)
@@ -232,6 +234,7 @@ def _run_pipeline(application_text: str, job_role: str, job_id: Optional[str] = 
         id=candidate_id,
         screened_at=screened_at,
         job_role=job_role,
+        application_text=application_text,
         state=serialisable_state,
         action_log=candidate_action_log,
     )
@@ -408,6 +411,7 @@ def get_candidate(candidate_id: str) -> ScreenResponse:
         id=record["id"],
         screened_at=record["screened_at"],
         job_role=record["job_role"],
+        application_text=record.get("application_text", ""),
         state=record["state"],
         action_log=record["action_log"],
     )

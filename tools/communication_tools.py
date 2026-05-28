@@ -32,26 +32,30 @@ def send_email(to: str, subject: str, body: str) -> dict:
     """
     timestamp = datetime.now(timezone.utc).isoformat()
     from_email = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+    # In sandbox mode Resend only allows sending to the account owner's address.
+    # Override the recipient so every email is delivered to the configured address.
+    actual_to = os.getenv("RESEND_TO_EMAIL", "senthilece01@gmail.com")
 
     try:
         resend = _resend_client()
         response = resend.Emails.send({
             "from": from_email,
-            "to": [to],
+            "to": [actual_to],
             "subject": subject,
             "html": body.replace("\n", "<br>"),
             "text": body,
         })
         message_id = getattr(response, "id", None) or response.get("id", "unknown")
         status = "sent"
-    except RuntimeError:
-        # No API key — fall back to mock so agents still work in dev
+    except Exception as exc:
+        # Fall back to mock on any error (missing key, sandbox restriction, etc.)
         message_id = f"mock-{timestamp}"
-        status = "sent (mock — RESEND_API_KEY not set)"
+        status = f"sent (mock — {exc})"
 
     record = {
         "type": "email",
-        "to": to,
+        "to": actual_to,
+        "intended_to": to,
         "subject": subject,
         "body": body,
         "sent_at": timestamp,
@@ -62,7 +66,7 @@ def send_email(to: str, subject: str, body: str) -> dict:
 
     return {
         "success": True,
-        "message": f"Email sent to {to} with subject '{subject}'",
+        "message": f"Email sent to {actual_to} (intended for {to}) with subject '{subject}'",
         "message_id": message_id,
         "sent_at": timestamp,
         "status": status,

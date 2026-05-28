@@ -103,11 +103,13 @@ CREATE INDEX IF NOT EXISTS idx_jobs_posted_at
     ON jobs (posted_at DESC);
 
 CREATE TABLE IF NOT EXISTS candidates (
-    id          TEXT PRIMARY KEY,
-    screened_at TIMESTAMPTZ NOT NULL,
-    job_role    TEXT        NOT NULL,
-    state       JSONB       NOT NULL DEFAULT '{}',
-    action_log  JSONB       NOT NULL DEFAULT '[]'
+    id               TEXT PRIMARY KEY,
+    screened_at      TIMESTAMPTZ NOT NULL,
+    job_role         TEXT        NOT NULL,
+    application_text TEXT        NOT NULL DEFAULT '',
+    screening_status TEXT        NOT NULL DEFAULT 'pending',
+    state            JSONB       NOT NULL DEFAULT '{}',
+    action_log       JSONB       NOT NULL DEFAULT '[]'
 );
 
 CREATE INDEX IF NOT EXISTS idx_candidates_screened_at
@@ -115,6 +117,7 @@ CREATE INDEX IF NOT EXISTS idx_candidates_screened_at
 
 CREATE INDEX IF NOT EXISTS idx_candidates_decision
     ON candidates ((state->>'final_decision'));
+
 
 -- idx_candidates_job_id created via migration in init_db()
 """
@@ -125,13 +128,32 @@ def init_db() -> None:
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(_CREATE_TABLE)
-            # Idempotent migration: add job_id column to existing candidates table
+            # Idempotent migrations for existing candidates table
             cur.execute("""
                 ALTER TABLE candidates
                 ADD COLUMN IF NOT EXISTS job_id TEXT REFERENCES jobs(id) ON DELETE SET NULL;
             """)
             cur.execute("""
+                ALTER TABLE candidates
+                ADD COLUMN IF NOT EXISTS application_text TEXT NOT NULL DEFAULT '';
+            """)
+            cur.execute("""
                 CREATE INDEX IF NOT EXISTS idx_candidates_job_id ON candidates (job_id);
+            """)
+            cur.execute("""
+                ALTER TABLE candidates
+                ADD COLUMN IF NOT EXISTS screening_status TEXT NOT NULL DEFAULT 'pending';
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_candidates_screening_status
+                ON candidates (screening_status);
+            """)
+            # Backfill existing rows that still have 'pending'
+            cur.execute("""
+                UPDATE candidates
+                SET screening_status = state->>'final_decision'
+                WHERE screening_status = 'pending'
+                  AND state->>'final_decision' IS NOT NULL;
             """)
 
 
@@ -146,22 +168,29 @@ def save_candidate(record: dict) -> None:
     `record` must have keys: id, screened_at, job_role, state, action_log.
     Optional key: job_id (references jobs.id).
     """
+    state = record["state"]
+    screening_status = state.get("final_decision", "pending") if isinstance(state, dict) else "pending"
+
     sql = """
-        INSERT INTO candidates (id, screened_at, job_role, job_id, state, action_log)
-        VALUES (%(id)s, %(screened_at)s, %(job_role)s, %(job_id)s, %(state)s, %(action_log)s)
+        INSERT INTO candidates (id, screened_at, job_role, job_id, application_text, screening_status, state, action_log)
+        VALUES (%(id)s, %(screened_at)s, %(job_role)s, %(job_id)s, %(application_text)s, %(screening_status)s, %(state)s, %(action_log)s)
         ON CONFLICT (id) DO UPDATE
-            SET state      = EXCLUDED.state,
-                action_log = EXCLUDED.action_log;
+            SET state            = EXCLUDED.state,
+                action_log       = EXCLUDED.action_log,
+                application_text = EXCLUDED.application_text,
+                screening_status = EXCLUDED.screening_status;
     """
     with _conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql, {
-                "id":          record["id"],
-                "screened_at": record["screened_at"],
-                "job_role":    record["job_role"],
-                "job_id":      record.get("job_id"),
-                "state":       json.dumps(record["state"]),
-                "action_log":  json.dumps(record["action_log"]),
+                "id":               record["id"],
+                "screened_at":      record["screened_at"],
+                "job_role":         record["job_role"],
+                "job_id":           record.get("job_id"),
+                "application_text": record.get("application_text", ""),
+                "screening_status": screening_status,
+                "state":            json.dumps(record["state"]),
+                "action_log":       json.dumps(record["action_log"]),
             })
 
 
@@ -180,19 +209,19 @@ def get_candidate(candidate_id: str) -> Optional[dict]:
 def list_candidates(decision: Optional[str] = None) -> list[dict]:
     """
     Return summary records for all candidates, newest first.
-    Pass `decision` to filter by final_decision value.
+    Pass `decision` to filter by screening_status column.
     """
     if decision:
         sql = """
-            SELECT id, screened_at, job_role, state, action_log
+            SELECT id, screened_at, job_role, job_id, application_text, screening_status, state, action_log
             FROM   candidates
-            WHERE  state->>'final_decision' = %s
+            WHERE  screening_status = %s
             ORDER  BY screened_at DESC
         """
         params = (decision,)
     else:
         sql = """
-            SELECT id, screened_at, job_role, state, action_log
+            SELECT id, screened_at, job_role, job_id, application_text, screening_status, state, action_log
             FROM   candidates
             ORDER  BY screened_at DESC
         """
@@ -387,9 +416,12 @@ def _row_to_record(row: dict) -> dict:
         screened_at = screened_at.isoformat()
 
     return {
-        "id":          row["id"],
-        "screened_at": screened_at,
-        "job_role":    row["job_role"],
-        "state":       state,
-        "action_log":  action_log,
+        "id":               row["id"],
+        "screened_at":      screened_at,
+        "job_role":         row["job_role"],
+        "job_id":           row.get("job_id"),
+        "application_text": row.get("application_text", ""),
+        "screening_status": row.get("screening_status", state.get("final_decision", "pending")),
+        "state":            state,
+        "action_log":       action_log,
     }
