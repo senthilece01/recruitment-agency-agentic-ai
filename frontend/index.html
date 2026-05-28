@@ -823,9 +823,9 @@
       .pipeline-step::after {
         content: "";
         position: absolute;
-        right: -1px;
+        left: calc(50% + 20px);
         top: 20px;
-        width: calc(50% + 1px);
+        width: calc(50% - 20px);
         height: 2px;
         background: var(--border);
         z-index: 0;
@@ -834,9 +834,9 @@
       .pipeline-step::before {
         content: "";
         position: absolute;
-        left: -1px;
+        left: 0;
         top: 20px;
-        width: calc(50%);
+        width: calc(50% - 20px);
         height: 2px;
         background: var(--border);
         z-index: 0;
@@ -1590,9 +1590,9 @@
 
       const NAV_ITEMS = [
         { id: "dashboard", label: "Dashboard", icon: "◼" },
-        { id: "jobs", label: "Job Postings", icon: "📋" },
         { id: "screen", label: "Screen Candidate", icon: "✦" },
         { id: "pipeline", label: "Candidates", icon: "≡" },
+        { id: "jobs", label: "Job Postings", icon: "📋" },
         { id: "action-log", label: "Action Log", icon: "◷" },
         { id: "architecture", label: "Architecture", icon: "⬡" },
       ];
