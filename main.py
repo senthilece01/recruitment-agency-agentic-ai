@@ -4,10 +4,11 @@ Run: python main.py
 """
 import os
 from dotenv import load_dotenv
-from graph import app
-from tools.communication_tools import get_action_log
 
 load_dotenv()
+
+from graph import app
+from tools.communication_tools import get_action_log
 
 if not os.getenv("OPENAI_API_KEY"):
     raise EnvironmentError("OPENAI_API_KEY is not set. Copy .env.example → .env and add your key.")

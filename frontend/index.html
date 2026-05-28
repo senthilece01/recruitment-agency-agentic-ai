@@ -2325,6 +2325,10 @@ I have built several production APIs and enjoy working with modern Python framew
       function ScreenPage() {
         const [jobRole, setJobRole] = useState("python developer");
         const [appText, setAppText] = useState("");
+        const [inputMode, setInputMode] = useState("text"); // "text" | "file"
+        const [uploadFile, setUploadFile] = useState(null);
+        const [dragOver, setDragOver] = useState(false);
+        const fileInputRef = useRef(null);
         const [submitting, setSubmitting] = useState(false);
         const [pipelineStep, setPipelineStep] = useState(0);
         const [result, setResult] = useState(null);
@@ -2334,33 +2338,68 @@ I have built several production APIs and enjoy working with modern Python framew
           const tc = TEST_CANDIDATES[key];
           setJobRole(tc.job_role);
           setAppText(tc.application_text);
+          setInputMode("text");
+          setUploadFile(null);
           setResult(null);
           setError(null);
           setPipelineStep(0);
         };
 
+        const handleFileChange = (file) => {
+          if (!file) return;
+          setUploadFile(file);
+          setResult(null);
+          setError(null);
+          setPipelineStep(0);
+        };
+
+        const handleDrop = (e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const file = e.dataTransfer.files[0];
+          if (file) handleFileChange(file);
+        };
+
         const handleSubmit = async () => {
-          if (!appText.trim()) return;
+          const canSubmit = inputMode === "text" ? appText.trim() : uploadFile;
+          if (!canSubmit) return;
           setSubmitting(true);
           setResult(null);
           setError(null);
           setPipelineStep(1);
 
-          // Simulate pipeline steps visually
           const stepDelay = (ms) => new Promise((r) => setTimeout(r, ms));
 
           try {
-            // Start API call concurrently with animations
-            const apiPromise = apiFetch("/api/candidates/screen", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                application_text: appText,
-                job_role: jobRole,
-              }),
-            });
+            let apiPromise;
 
-            // Animate steps
+            if (inputMode === "file") {
+              const formData = new FormData();
+              formData.append("file", uploadFile);
+              formData.append("job_role", jobRole);
+              apiPromise = fetch(API_BASE + "/api/candidates/upload", {
+                method: "POST",
+                body: formData,
+              }).then(async (res) => {
+                if (!res.ok) {
+                  const err = await res
+                    .json()
+                    .catch(() => ({ detail: res.statusText }));
+                  throw new Error(err.detail || `HTTP ${res.status}`);
+                }
+                return res.json();
+              });
+            } else {
+              apiPromise = apiFetch("/api/candidates/screen", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  application_text: appText,
+                  job_role: jobRole,
+                }),
+              });
+            }
+
             await stepDelay(800);
             setPipelineStep(2);
             await stepDelay(800);
@@ -2382,11 +2421,68 @@ I have built several production APIs and enjoy working with modern Python framew
         const state = result?.state || {};
         const matched = state.matched_skills || [];
         const missing = state.missing_skills || [];
+        const required = state.required_skills || [];
+        const extracted = state.skills_extracted || [];
         const score = state.skill_score || 0;
         const decision = state.final_decision || "";
         const name = state.candidate_name || "Unknown";
         const level = state.experience_level || "";
         const action = state.action_taken || state.decision_reason || "";
+
+        // Parse action_taken text into structured key-value lines
+        // Handles patterns like "- **Key**: Value" or "- Key: Value"
+        function parseActionLines(text) {
+          if (!text) return [];
+          const lines = text.split(/\s*-\s+/).filter(Boolean);
+          return lines
+            .map((line) => {
+              const bold = line.match(/^\*\*(.+?)\*\*[:\s]+(.+)$/s);
+              if (bold)
+                return {
+                  key: bold[1].replace(/\*\*/g, ""),
+                  val: bold[2].trim(),
+                };
+              const colon = line.match(/^(.+?):\s+(.+)$/s);
+              if (colon) return { key: colon[1].trim(), val: colon[2].trim() };
+              return { key: null, val: line.trim() };
+            })
+            .filter((l) => l.val);
+        }
+
+        const JD_REQUIREMENTS = {
+          "python developer": {
+            required: ["python", "django", "fastapi", "postgresql", "docker"],
+            nice: ["kubernetes", "aws", "redis", "celery"],
+            min_years: 2,
+          },
+          "frontend developer": {
+            required: ["javascript", "react", "typescript", "css", "html"],
+            nice: ["nextjs", "tailwind", "jest"],
+            min_years: 1,
+          },
+          "ml engineer": {
+            required: [
+              "python",
+              "machine learning",
+              "deep learning",
+              "nlp",
+              "sql",
+            ],
+            nice: ["langchain", "langgraph", "aws", "docker"],
+            min_years: 3,
+          },
+          "backend engineer": {
+            required: ["python", "postgresql", "docker", "rest api", "sql"],
+            nice: ["kubernetes", "aws", "redis"],
+            min_years: 2,
+          },
+          "devops engineer": {
+            required: ["docker", "kubernetes", "ci/cd", "linux", "aws"],
+            nice: ["terraform", "ansible", "prometheus"],
+            min_years: 3,
+          },
+        };
+        const jdInfo = JD_REQUIREMENTS[jobRole] || null;
 
         return (
           <div className="page-content">
@@ -2445,15 +2541,147 @@ I have built several production APIs and enjoy working with modern Python framew
                     </select>
                   </div>
 
-                  <div className="form-group">
-                    <label>Application Text</label>
-                    <textarea
-                      value={appText}
-                      onChange={(e) => setAppText(e.target.value)}
-                      placeholder={`Name: Jane Doe\nI have 5 years of experience in Python development...\nSkills: Python, FastAPI, PostgreSQL, Docker\n...`}
-                      style={{ minHeight: 200 }}
-                    />
+                  {/* Input mode toggle */}
+                  <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                    {["text", "file"].map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => {
+                          setInputMode(mode);
+                          setResult(null);
+                          setError(null);
+                          setPipelineStep(0);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "8px 0",
+                          borderRadius: 8,
+                          border: `1.5px solid ${inputMode === mode ? "var(--clr-info)" : "var(--border)"}`,
+                          background:
+                            inputMode === mode
+                              ? "rgba(37,99,235,0.08)"
+                              : "transparent",
+                          color:
+                            inputMode === mode
+                              ? "var(--clr-info)"
+                              : "var(--text-secondary)",
+                          fontFamily: "inherit",
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        {mode === "text" ? "✏ Paste Text" : "⬆ Upload Resume"}
+                      </button>
+                    ))}
                   </div>
+
+                  {inputMode === "text" ? (
+                    <div className="form-group">
+                      <label>Application Text</label>
+                      <textarea
+                        value={appText}
+                        onChange={(e) => setAppText(e.target.value)}
+                        placeholder={`Name: Jane Doe\nI have 5 years of experience in Python development...\nSkills: Python, FastAPI, PostgreSQL, Docker\n...`}
+                        style={{ minHeight: 200 }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="form-group">
+                      <label>
+                        Resume File{" "}
+                        <span
+                          style={{
+                            color: "var(--text-muted)",
+                            fontWeight: 400,
+                          }}
+                        >
+                          (PDF, DOCX, or TXT)
+                        </span>
+                      </label>
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setDragOver(true);
+                        }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        style={{
+                          border: `2px dashed ${dragOver ? "var(--clr-info)" : uploadFile ? "var(--clr-interview)" : "var(--border)"}`,
+                          borderRadius: 10,
+                          padding: "32px 16px",
+                          textAlign: "center",
+                          cursor: "pointer",
+                          background: dragOver
+                            ? "rgba(37,99,235,0.04)"
+                            : uploadFile
+                              ? "rgba(5,150,105,0.04)"
+                              : "transparent",
+                          transition: "all 0.15s",
+                        }}
+                      >
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf,.docx,.doc,.txt"
+                          style={{ display: "none" }}
+                          onChange={(e) =>
+                            handleFileChange(e.target.files?.[0])
+                          }
+                        />
+                        {uploadFile ? (
+                          <div>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>
+                              📄
+                            </div>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                color: "var(--clr-interview)",
+                                marginBottom: 4,
+                              }}
+                            >
+                              {uploadFile.name}
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              {(uploadFile.size / 1024).toFixed(1)} KB · Click
+                              to change
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{ fontSize: 28, marginBottom: 8 }}>
+                              ⬆
+                            </div>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                color: "var(--text-secondary)",
+                                marginBottom: 4,
+                              }}
+                            >
+                              Drop your resume here
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              or click to browse · PDF, DOCX, TXT
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {error && (
                     <div className="error-banner">
@@ -2470,7 +2698,10 @@ I have built several production APIs and enjoy working with modern Python framew
                       fontSize: 14,
                     }}
                     onClick={handleSubmit}
-                    disabled={submitting || !appText.trim()}
+                    disabled={
+                      submitting ||
+                      (inputMode === "text" ? !appText.trim() : !uploadFile)
+                    }
                   >
                     {submitting ? (
                       <>
@@ -2566,6 +2797,213 @@ I have built several production APIs and enjoy working with modern Python framew
 
                     <SkillChips matched={matched} missing={missing} />
 
+                    {/* JD vs Resume comparison */}
+                    {jdInfo && (
+                      <div style={{ marginTop: 16 }}>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            color: "var(--text-muted)",
+                            fontWeight: 600,
+                            marginBottom: 8,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                          }}
+                        >
+                          JD Requirements vs Resume
+                        </div>
+                        <div
+                          style={{
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            overflow: "hidden",
+                          }}
+                        >
+                          {/* Header */}
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr 1fr",
+                              background: "rgba(0,0,0,0.04)",
+                              borderBottom: "1px solid var(--border)",
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: "6px 12px",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "var(--text-secondary)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                              }}
+                            >
+                              JD Required
+                            </div>
+                            <div
+                              style={{
+                                padding: "6px 12px",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: "var(--text-secondary)",
+                                textTransform: "uppercase",
+                                letterSpacing: "0.05em",
+                                borderLeft: "1px solid var(--border)",
+                              }}
+                            >
+                              Candidate Has
+                            </div>
+                          </div>
+                          {/* Rows */}
+                          {jdInfo.required.map((skill, i) => {
+                            const has = matched
+                              .map((s) => s.toLowerCase())
+                              .includes(skill.toLowerCase());
+                            return (
+                              <div
+                                key={skill}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "1fr 1fr",
+                                  borderBottom:
+                                    i < jdInfo.required.length - 1
+                                      ? "1px solid var(--border)"
+                                      : "none",
+                                  background:
+                                    i % 2 === 0
+                                      ? "transparent"
+                                      : "rgba(0,0,0,0.015)",
+                                }}
+                              >
+                                <div
+                                  style={{
+                                    padding: "7px 12px",
+                                    fontSize: 12,
+                                    color: "var(--text-primary)",
+                                    fontWeight: 500,
+                                  }}
+                                >
+                                  {skill}
+                                </div>
+                                <div
+                                  style={{
+                                    padding: "7px 12px",
+                                    fontSize: 12,
+                                    borderLeft: "1px solid var(--border)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 6,
+                                  }}
+                                >
+                                  {has ? (
+                                    <>
+                                      <span
+                                        style={{
+                                          color: "var(--clr-interview)",
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        ✓
+                                      </span>
+                                      <span
+                                        style={{
+                                          color: "var(--clr-interview)",
+                                        }}
+                                      >
+                                        Yes
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span
+                                        style={{
+                                          color: "var(--clr-reject)",
+                                          fontWeight: 700,
+                                        }}
+                                      >
+                                        ✗
+                                      </span>
+                                      <span
+                                        style={{ color: "var(--clr-reject)" }}
+                                      >
+                                        Missing
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {/* Min years footer */}
+                          <div
+                            style={{
+                              padding: "6px 12px",
+                              background: "rgba(0,0,0,0.03)",
+                              borderTop: "1px solid var(--border)",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                              }}
+                            >
+                              Min. Experience Required
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color:
+                                  (state.years_of_experience || 0) >=
+                                  jdInfo.min_years
+                                    ? "var(--clr-interview)"
+                                    : "var(--clr-reject)",
+                              }}
+                            >
+                              {jdInfo.min_years}+ yrs · Candidate:{" "}
+                              {state.years_of_experience || "?"} yrs
+                            </span>
+                          </div>
+                        </div>
+                        {/* Nice to have */}
+                        {jdInfo.nice.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                                fontWeight: 600,
+                              }}
+                            >
+                              Nice to have:{" "}
+                            </span>
+                            {jdInfo.nice.map((s) => (
+                              <span
+                                key={s}
+                                style={{
+                                  display: "inline-block",
+                                  fontSize: 11,
+                                  padding: "2px 8px",
+                                  borderRadius: 99,
+                                  marginRight: 4,
+                                  marginTop: 4,
+                                  background: "rgba(0,0,0,0.05)",
+                                  color: "var(--text-secondary)",
+                                }}
+                              >
+                                {s}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action Taken - structured */}
                     {action && (
                       <div className="mt-12">
                         <div
@@ -2573,23 +3011,63 @@ I have built several production APIs and enjoy working with modern Python framew
                             fontSize: 11,
                             color: "var(--text-muted)",
                             fontWeight: 600,
-                            marginBottom: 5,
+                            marginBottom: 8,
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
                           }}
                         >
                           Action Taken
                         </div>
                         <div
                           style={{
-                            fontSize: 12,
-                            color: "var(--text-secondary)",
-                            background: "rgba(255,255,255,0.03)",
-                            borderRadius: 8,
-                            padding: "10px 14px",
                             border: "1px solid var(--border)",
-                            lineHeight: 1.6,
+                            borderRadius: 8,
+                            overflow: "hidden",
                           }}
                         >
-                          {action}
+                          {parseActionLines(action).map((line, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                display: "flex",
+                                borderBottom:
+                                  i < parseActionLines(action).length - 1
+                                    ? "1px solid var(--border)"
+                                    : "none",
+                                background:
+                                  i % 2 === 0
+                                    ? "transparent"
+                                    : "rgba(0,0,0,0.015)",
+                              }}
+                            >
+                              {line.key && (
+                                <div
+                                  style={{
+                                    minWidth: 120,
+                                    padding: "8px 12px",
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    color: "var(--text-secondary)",
+                                    borderRight: "1px solid var(--border)",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {line.key}
+                                </div>
+                              )}
+                              <div
+                                style={{
+                                  padding: "8px 12px",
+                                  fontSize: 12,
+                                  color: "var(--text-primary)",
+                                  lineHeight: 1.5,
+                                  flex: 1,
+                                }}
+                              >
+                                {line.val}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}

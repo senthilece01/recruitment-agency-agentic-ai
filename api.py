@@ -16,13 +16,14 @@ Endpoints:
     GET    /health                  — Health check
 """
 
+import io
 import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Query, status
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -216,6 +217,117 @@ def screen_candidate(request: ScreenRequest) -> ScreenResponse:
         id=candidate_id,
         screened_at=screened_at,
         job_role=request.job_role,
+        state=serialisable_state,
+        action_log=candidate_action_log,
+    )
+
+
+def _extract_text_from_file(filename: str, content: bytes) -> str:
+    """Extract plain text from PDF, DOCX, or plain-text files."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext == "pdf":
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(content))
+            return "\n".join(page.extract_text() or "" for page in reader.pages).strip()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Could not parse PDF: {exc}",
+            ) from exc
+
+    if ext in {"docx", "doc"}:
+        try:
+            import docx
+            doc = docx.Document(io.BytesIO(content))
+            return "\n".join(p.text for p in doc.paragraphs).strip()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Could not parse DOCX: {exc}",
+            ) from exc
+
+    # Treat everything else as plain text
+    try:
+        return content.decode("utf-8", errors="replace").strip()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Could not decode file as text: {exc}",
+        ) from exc
+
+
+@app.post(
+    "/api/candidates/upload",
+    response_model=ScreenResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Candidates"],
+    summary="Upload a resume file and screen it through the full AI pipeline",
+)
+async def upload_and_screen(
+    file: UploadFile = File(..., description="Resume file — PDF, DOCX, or TXT"),
+    job_role: str = "python developer",
+) -> ScreenResponse:
+    """
+    Accept a resume file (PDF / DOCX / TXT), extract its text, then run the
+    LangGraph multi-agent pipeline exactly as `POST /api/candidates/screen` does.
+    """
+    _require_openai_key()
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
+
+    application_text = _extract_text_from_file(file.filename or "resume.txt", content)
+    if len(application_text) < 10:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Could not extract sufficient text from the uploaded file.",
+        )
+
+    try:
+        from graph import app as langgraph_app
+        import tools.communication_tools as comm_tools
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load LangGraph workflow: {exc}",
+        ) from exc
+
+    log_start_index = len(comm_tools.ACTION_LOG)
+
+    try:
+        result: dict = langgraph_app.invoke({"application": application_text})
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"LangGraph pipeline error: {exc}",
+        ) from exc
+
+    candidate_action_log: list[dict] = list(comm_tools.ACTION_LOG[log_start_index:])
+
+    candidate_id = str(uuid.uuid4())
+    screened_at = datetime.now(timezone.utc).isoformat()
+
+    serialisable_state = {k: v for k, v in result.items() if k != "messages"}
+
+    record = {
+        "id": candidate_id,
+        "screened_at": screened_at,
+        "job_role": job_role,
+        "state": serialisable_state,
+        "action_log": candidate_action_log,
+    }
+    CANDIDATES_STORE[candidate_id] = record
+
+    return ScreenResponse(
+        id=candidate_id,
+        screened_at=screened_at,
+        job_role=job_role,
         state=serialisable_state,
         action_log=candidate_action_log,
     )
