@@ -95,16 +95,16 @@ Agent 1 (HR Screener) → Agent 2 (Technical Assessor) → Agent 3 (Recruiter)
 
 ### Comparison Table
 
-| Dimension             | Single LLM Call | Single Agent   | Multi-Agent (This Project) |
-|-----------------------|-----------------|----------------|----------------------------|
-| LLM instances         | 1               | 1              | 3 (one per agent)          |
-| Tools available       | None            | Shared pool    | Dedicated per agent        |
-| Reasoning loop        | No              | Yes (ReAct)    | Yes (per agent)            |
-| Specialisation        | None            | Partial        | Full (bounded scope)       |
-| Inter-agent comms     | N/A             | N/A            | Shared state               |
-| Scalability           | Low             | Medium         | High                       |
-| Failure isolation     | None            | None           | Per-agent                  |
-| Parallelisable        | No              | No             | Yes (with LangGraph)       |
+| Dimension         | Single LLM Call | Single Agent | Multi-Agent (This Project) |
+| ----------------- | --------------- | ------------ | -------------------------- |
+| LLM instances     | 1               | 1            | 3 (one per agent)          |
+| Tools available   | None            | Shared pool  | Dedicated per agent        |
+| Reasoning loop    | No              | Yes (ReAct)  | Yes (per agent)            |
+| Specialisation    | None            | Partial      | Full (bounded scope)       |
+| Inter-agent comms | N/A             | N/A          | Shared state               |
+| Scalability       | Low             | Medium       | High                       |
+| Failure isolation | None            | None         | Per-agent                  |
+| Parallelisable    | No              | No           | Yes (with LangGraph)       |
 
 ---
 
@@ -117,7 +117,9 @@ transitions between them.
 ### Core concepts
 
 #### StateGraph
+
 The central object. You define:
+
 - A **state schema** (TypedDict) that all nodes share
 - **Nodes** — functions or agents that read/write the state
 - **Edges** — connections between nodes (fixed or conditional)
@@ -134,11 +136,13 @@ workflow.add_node("recruiter", recruiter_node)
 #### Edges and Conditional Edges
 
 Fixed edges always go to the next node:
+
 ```python
 workflow.add_edge("hr_screener", "technical_assessor")
 ```
 
 Conditional edges route based on state:
+
 ```python
 workflow.add_conditional_edges("technical_assessor", route_decision)
 ```
@@ -158,6 +162,7 @@ agent = create_react_agent(
 ```
 
 The agent internally runs a mini-graph:
+
 ```
 input → llm_call → [tool_calls?] → tool_execution → llm_call → ... → final_response
 ```
@@ -288,23 +293,26 @@ decides** the sequence of tool calls based on its observations.
 **File**: [agents/hr_screener.py](agents/hr_screener.py)
 
 ### Responsibility
+
 Extract structured information from the raw application text.
 This agent does NOT judge the candidate — it only gathers facts.
 
 ### System Prompt (summarised)
+
 > "You are an experienced HR Screener. Parse the application,
 > extract skills, determine experience level, and check the candidate DB.
 > Do not make hiring decisions — only gather data."
 
 ### Tools
 
-| Tool | Input | Output |
-|------|-------|--------|
-| `parse_resume` | application text | `{extracted_skills, summary}` |
+| Tool                          | Input            | Output                                    |
+| ----------------------------- | ---------------- | ----------------------------------------- |
+| `parse_resume`                | application text | `{extracted_skills, summary}`             |
 | `extract_years_of_experience` | application text | `{years_of_experience, experience_level}` |
-| `query_candidate_db` | candidate name | `{found, record}` |
+| `query_candidate_db`          | candidate name   | `{found, record}`                         |
 
 ### State contributions
+
 ```python
 {
   "skills_extracted":    ["python", "django", "fastapi"],
@@ -315,7 +323,9 @@ This agent does NOT judge the candidate — it only gathers facts.
 ```
 
 ### Why a separate agent for this?
+
 In a real system, parsing resumes could involve:
+
 - PDF text extraction
 - NLP named-entity recognition
 - Database lookups across multiple sources
@@ -331,21 +341,23 @@ tools for real PDF parsing) without touching the rest of the system.
 **File**: [agents/technical_assessor.py](agents/technical_assessor.py)
 
 ### Responsibility
+
 Evaluate the technical fit of the candidate against the open role requirements.
 This agent is domain-aware — it knows what skills are needed and can score candidates.
 
 ### System Prompt (summarised)
+
 > "You are a Technical Assessor. Fetch the job requirements, run a skill gap
 > analysis against the candidate's skills, and produce a Match/No Match verdict
 > with a 0-100 score."
 
 ### Tools
 
-| Tool | Input | Output |
-|------|-------|--------|
-| `search_job_requirements` | role name | `{required_skills, nice_to_have, min_years}` |
-| `run_skill_gap_analysis` | candidate skills + required skills | `{matched, missing, score, verdict}` |
-| `get_market_demand` | skill name | `{demand, avg_salary, trend}` |
+| Tool                      | Input                              | Output                                       |
+| ------------------------- | ---------------------------------- | -------------------------------------------- |
+| `search_job_requirements` | role name                          | `{required_skills, nice_to_have, min_years}` |
+| `run_skill_gap_analysis`  | candidate skills + required skills | `{matched, missing, score, verdict}`         |
+| `get_market_demand`       | skill name                         | `{demand, avg_salary, trend}`                |
 
 ### Scoring logic (inside `run_skill_gap_analysis`)
 
@@ -357,6 +369,7 @@ score < 60  →  "No Match"
 ```
 
 ### State contributions
+
 ```python
 {
   "required_skills": ["python", "django", "fastapi", "postgresql", "docker"],
@@ -368,8 +381,10 @@ score < 60  →  "No Match"
 ```
 
 ### Why a separate agent for this?
+
 The technical assessment is a completely different concern from HR screening.
 In a real system this agent could:
+
 - Query live job boards (LinkedIn, Indeed)
 - Run actual coding challenges
 - Compare against industry benchmarks
@@ -384,10 +399,12 @@ Separation means you can tune the Technical Assessor independently.
 **File**: [agents/recruiter.py](agents/recruiter.py)
 
 ### Responsibility
+
 Take the **final action** based on the complete picture built by the first two agents.
 This is the only agent that performs real-world side effects (emails, calendar, audit log).
 
 ### System Prompt (summarised)
+
 > "You are a Recruiter. Based on skill_match and experience_level, decide:
 > interview / escalate / reject. Then send the appropriate email, create a
 > calendar invite if needed, and log the decision."
@@ -414,13 +431,14 @@ Otherwise (No Match + Entry/Mid-level)
 
 ### Tools
 
-| Tool | What it does (mock) |
-|------|---------------------|
-| `send_email` | Appends email record to in-memory `ACTION_LOG` |
+| Tool                     | What it does (mock)                                  |
+| ------------------------ | ---------------------------------------------------- |
+| `send_email`             | Appends email record to in-memory `ACTION_LOG`       |
 | `create_calendar_invite` | Appends invite record, schedules 3 business days out |
-| `log_candidate_decision` | Appends audit record with timestamp |
+| `log_candidate_decision` | Appends audit record with timestamp                  |
 
 ### State contributions
+
 ```python
 {
   "final_decision": "interview",
@@ -430,7 +448,9 @@ Otherwise (No Match + Entry/Mid-level)
 ```
 
 ### Why a separate agent for this?
+
 Actions have side effects. Keeping all communication and logging in one agent:
+
 - Makes it easy to audit what was sent
 - Lets you swap mock tools for real integrations (Resend, Google Calendar)
 - Prevents other agents from accidentally firing emails mid-workflow
@@ -482,6 +502,7 @@ class RecruitmentState(TypedDict):
 ### Why TypedDict?
 
 TypedDict gives:
+
 - **Type safety** — catch state field errors early
 - **Clarity** — every agent knows exactly what it can read/write
 - **Documentation** — the state schema is self-documenting
@@ -568,6 +589,7 @@ app.invoke({"application": "I have 8 years of experience in Python..."})
 ```
 
 State at this point:
+
 ```
 application = "I have 8 years of experience in Python..."
 (all other fields: empty / default)
@@ -596,6 +618,7 @@ FINISH: Structured summary ready.
 ```
 
 **State after HR Screener:**
+
 ```
 skills_extracted    = ["python", "django", "fastapi", "postgresql", "docker"]
 years_of_experience = 8
@@ -630,6 +653,7 @@ FINISH: Summary ready.
 ```
 
 **State after Technical Assessor:**
+
 ```
 required_skills = ["python", "django", "fastapi", "postgresql", "docker"]
 matched_skills  = ["python", "django", "fastapi", "postgresql", "docker"]
@@ -682,6 +706,7 @@ FINISH: All actions complete.
 ```
 
 **State after Recruiter:**
+
 ```
 final_decision = "interview"
 email_sent     = True
@@ -719,6 +744,7 @@ All possible outcomes and their conditions:
 Defined in [main.py](main.py):
 
 ### Test 1 — Senior Python Developer → INTERVIEW
+
 ```
 Input  : "8 years experience, Python, Django, FastAPI, PostgreSQL, Docker"
 HR     : Senior-level, 8 years, skills: [python, django, fastapi, postgresql, docker]
@@ -727,6 +753,7 @@ Action : Email invitation + Calendar invite (HR Interview, 3 days out)
 ```
 
 ### Test 2 — Senior Java Developer → ESCALATE
+
 ```
 Input  : "10 years experience, Java, Spring Boot, SQL, Kubernetes"
 HR     : Senior-level, 10 years, skills: [java, sql, kubernetes]
@@ -735,6 +762,7 @@ Action : Escalation email to senior recruiter
 ```
 
 ### Test 3 — Entry-level C++ Developer → REJECT
+
 ```
 Input  : "1 year experience, C++, data structures"
 HR     : Entry-level, 1 year, skills: [c++]
@@ -743,6 +771,7 @@ Action : Polite rejection email
 ```
 
 ### Test 4 — Mid-level Python Developer → INTERVIEW
+
 ```
 Input  : "4 years experience, Python, FastAPI, PostgreSQL"
 HR     : Mid-level, 4 years, skills: [python, fastapi, postgresql]
@@ -771,6 +800,7 @@ def assess_skillset(state):
 ```
 
 **Limitations:**
+
 - No tools — agents cannot look anything up or take actions
 - No ReAct loop — each node is one prompt → one response
 - No side effects — no emails, no logs, no real actions
@@ -803,31 +833,35 @@ recruiter_agent = create_react_agent(
 
 **What changed:**
 
-| Dimension | v1 | v2 |
-|---|---|---|
-| Architecture | Single graph, simple functions | Multi-agent graph, ReAct agents |
-| Tools | None | 3 tools per agent (9 total) |
-| Reasoning | Single LLM call per node | Full ReAct loop per agent |
-| Side effects | None | Emails, calendar, audit log |
-| State richness | 4 fields | 15 fields |
-| Extensibility | Modify functions | Swap/add tools or agents |
-| Real-world readiness | Prototype | Production-extensible |
+| Dimension            | v1                             | v2                              |
+| -------------------- | ------------------------------ | ------------------------------- |
+| Architecture         | Single graph, simple functions | Multi-agent graph, ReAct agents |
+| Tools                | None                           | 3 tools per agent (9 total)     |
+| Reasoning            | Single LLM call per node       | Full ReAct loop per agent       |
+| Side effects         | None                           | Emails, calendar, audit log     |
+| State richness       | 4 fields                       | 15 fields                       |
+| Extensibility        | Modify functions               | Swap/add tools or agents        |
+| Real-world readiness | Prototype                      | Production-extensible           |
 
 ---
 
 ## 15. Key LangGraph Concepts Used
 
 ### `StateGraph`
+
 The graph container. Holds nodes, edges, and the state schema.
 
 ### `TypedDict` State
+
 Strongly-typed shared state. Every agent reads and writes to this.
 
 ### `create_react_agent`
+
 Builds a ReAct agent from an LLM + tools. Manages the internal
 think → act → observe loop automatically.
 
 ### `@tool` decorator
+
 Converts a plain Python function into a LangChain tool that an agent
 can discover and call.
 
@@ -844,6 +878,7 @@ The docstring becomes the tool description — the LLM reads it to decide
 whether to call the tool.
 
 ### `add_messages` reducer
+
 Merges message lists from multiple agents into a single shared history.
 
 ```python
@@ -854,6 +889,7 @@ Without this, writing to `messages` from multiple agents would overwrite
 instead of append.
 
 ### `add_conditional_edges`
+
 Routes execution to different nodes based on a function that inspects state.
 
 ```python
@@ -861,6 +897,7 @@ workflow.add_conditional_edges("technical_assessor", route_decision)
 ```
 
 ### `workflow.compile()`
+
 Validates the graph and returns a runnable `CompiledGraph` with `.invoke()`,
 `.stream()`, and `.astream()` methods.
 

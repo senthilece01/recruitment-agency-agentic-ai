@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/Development/code/AI/Code/trident-recruitment-ai status)"
+    ]
+  }
+}

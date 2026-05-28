@@ -187,6 +187,10 @@ recruitment_agency_workflow_v2/
 git clone https://github.com/senthilece01/recruitment-agency-workflow-v2.git
 cd recruitment-agency-workflow-v2
 
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
 # Install dependencies
 pip install -r requirements.txt
 
@@ -195,11 +199,227 @@ cp .env.example .env
 # Edit .env and add your OPENAI_API_KEY
 ```
 
-## Run
+## Project Structure
+
+```
+recruitment_agency_workflow_v2/
+├── agents/
+│   ├── hr_screener.py          # Agent 1 — HR Screener (ReAct)
+│   ├── technical_assessor.py   # Agent 2 — Technical Assessor (ReAct)
+│   └── recruiter.py            # Agent 3 — Recruiter (ReAct)
+├── tools/
+│   ├── resume_tools.py         # parse_resume, query_candidate_db, extract_years_of_experience
+│   ├── assessment_tools.py     # search_job_requirements, run_skill_gap_analysis, get_market_demand
+│   └── communication_tools.py  # send_email, create_calendar_invite, log_candidate_decision
+├── frontend/
+│   └── index.html              # Single-file React dashboard (no build step)
+├── state.py                    # Shared RecruitmentState TypedDict
+├── graph.py                    # LangGraph orchestrator — wires all agents
+├── api.py                      # FastAPI REST server
+├── main.py                     # CLI entry point with 4 test candidates
+├── requirements.txt
+├── .env.example
+└── .gitignore
+```
+
+---
+
+## Running the System
+
+### Option A — CLI (batch mode)
+
+Runs all 4 test candidates and prints results to the terminal.
 
 ```bash
 python main.py
 ```
+
+### Option B — Full Stack (API + Dashboard)
+
+#### 1. Start the Backend API
+
+```bash
+uvicorn api:app --reload --port 8000
+```
+
+The API server starts at **http://localhost:8000**
+
+#### 2. Start the Frontend Dashboard
+
+```bash
+cd frontend
+python3 -m http.server 3000
+```
+
+The dashboard opens at **http://localhost:3000**
+
+---
+
+## Frontend Dashboard
+
+A rich, dark-themed React dashboard served as a single HTML file — no build step required.
+
+**URL:** http://localhost:3000
+
+### Pages
+
+| Page                    | Description                                                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Dashboard**           | Animated stats counters, SVG donut chart, recent candidates table, 30s auto-refresh                                                     |
+| **Screen Candidate**    | Job role selector, application textarea, 4 pre-fill test buttons, live 3-step pipeline progress animation, result card with skill chips |
+| **Candidates Pipeline** | Filter tabs (All / Interview / Escalate / Reject), expandable candidate cards with skill scores                                         |
+| **Action Log**          | Vertical timeline of emails sent, calendar invites created, and decisions logged                                                        |
+| **Agent Architecture**  | Visual diagram of the 3-agent pipeline, state schema, decision routing table                                                            |
+
+### Theme
+
+Dark glassmorphism — `#0f0f1a` background, with colour-coded decisions:
+
+| Decision  | Colour          |
+| --------- | --------------- |
+| Interview | Green `#06d6a0` |
+| Escalate  | Blue `#00b4d8`  |
+| Reject    | Red `#e94560`   |
+
+---
+
+## Backend API
+
+A FastAPI REST server wrapping the LangGraph multi-agent workflow.
+
+**Base URL:** http://localhost:8000
+
+### Endpoints
+
+#### Candidates
+
+| Method | Endpoint                             | Description                                               |
+| ------ | ------------------------------------ | --------------------------------------------------------- |
+| `POST` | `/api/candidates/screen`             | Run the full 3-agent AI pipeline on a job application     |
+| `GET`  | `/api/candidates`                    | List all screened candidates (newest first)               |
+| `GET`  | `/api/candidates?decision=interview` | Filter by decision: `interview` \| `escalate` \| `reject` |
+| `GET`  | `/api/candidates/{id}`               | Full state + action log for one candidate                 |
+
+#### Observability
+
+| Method | Endpoint          | Description                                               |
+| ------ | ----------------- | --------------------------------------------------------- |
+| `GET`  | `/api/action-log` | Global log of all emails, calendar invites, and decisions |
+| `GET`  | `/api/stats`      | Aggregate counts and average skill score                  |
+
+#### System
+
+| Method   | Endpoint          | Description                                            |
+| -------- | ----------------- | ------------------------------------------------------ |
+| `GET`    | `/health`         | Health check — returns OpenAI key status, no LLM calls |
+| `DELETE` | `/api/candidates` | Clear all candidates and reset action log (demo use)   |
+
+### Request / Response Examples
+
+#### Screen a Candidate
+
+```bash
+POST /api/candidates/screen
+Content-Type: application/json
+
+{
+  "application_text": "I have 8 years of Python experience with FastAPI, Django, PostgreSQL and Docker.",
+  "job_role": "python developer"
+}
+```
+
+Response `201 Created`:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "screened_at": "2026-05-28T03:46:54Z",
+  "job_role": "python developer",
+  "state": {
+    "candidate_name": "Unknown",
+    "years_of_experience": 8,
+    "experience_level": "Senior-level",
+    "skills_extracted": ["python", "fastapi", "django", "postgresql", "docker"],
+    "required_skills": ["python", "django", "fastapi", "postgresql", "docker"],
+    "matched_skills": ["python", "fastapi", "django", "postgresql", "docker"],
+    "missing_skills": [],
+    "skill_match": "Match",
+    "skill_score": 100,
+    "final_decision": "interview",
+    "action_taken": "Sent interview invitation and scheduled calendar event.",
+    "email_sent": true
+  },
+  "action_log": [
+    {
+      "type": "email",
+      "to": "candidate@example.com",
+      "subject": "Interview Invitation — Python Developer Role",
+      "sent_at": "2026-05-28T03:46:54Z",
+      "status": "sent (mock)"
+    },
+    {
+      "type": "calendar_invite",
+      "date": "2026-05-31",
+      "time": "10:00 AM UTC",
+      "status": "scheduled (mock)"
+    },
+    {
+      "type": "decision",
+      "decision": "interview",
+      "reason": "100/100 skill match",
+      "logged_at": "2026-05-28T03:46:54Z"
+    }
+  ]
+}
+```
+
+#### Get Stats
+
+```bash
+GET /api/stats
+```
+
+Response:
+
+```json
+{
+  "total": 4,
+  "interviews": 2,
+  "escalations": 1,
+  "rejections": 1,
+  "avg_skill_score": 65.0
+}
+```
+
+#### Health Check
+
+```bash
+GET /health
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "openai_key_configured": true,
+  "candidates_in_store": 4,
+  "timestamp": "2026-05-28T03:46:54Z"
+}
+```
+
+---
+
+## API Documentation (Swagger)
+
+FastAPI auto-generates interactive API documentation — no extra setup needed.
+
+| UI             | URL                         | Description                                         |
+| -------------- | --------------------------- | --------------------------------------------------- |
+| **Swagger UI** | http://localhost:8000/docs  | Interactive — try endpoints directly in the browser |
+| **ReDoc**      | http://localhost:8000/redoc | Clean reference documentation                       |
+
+> These UIs are served automatically by FastAPI and require no files in the project directory.
 
 ---
 
