@@ -3011,74 +3011,98 @@ I have built several production APIs and enjoy working with modern Python framew
                       </div>
                     )}
 
-                    {/* Action Taken - structured */}
-                    {action && (
-                      <div className="mt-12">
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "var(--text-muted)",
-                            fontWeight: 600,
-                            marginBottom: 8,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                          }}
-                        >
-                          Action Taken
-                        </div>
-                        <div
-                          style={{
-                            border: "1px solid var(--border)",
-                            borderRadius: 8,
-                            overflow: "hidden",
-                          }}
-                        >
-                          {parseActionLines(action).map((line, i) => (
+                    {/* Action Taken - structured or plain */}
+                    {action &&
+                      (() => {
+                        const lines = parseActionLines(action);
+                        const isStructured =
+                          lines.length > 1 ||
+                          (lines.length === 1 && lines[0].key);
+                        return (
+                          <div className="mt-12">
                             <div
-                              key={i}
                               style={{
-                                display: "flex",
-                                borderBottom:
-                                  i < parseActionLines(action).length - 1
-                                    ? "1px solid var(--border)"
-                                    : "none",
-                                background:
-                                  i % 2 === 0
-                                    ? "transparent"
-                                    : "rgba(0,0,0,0.015)",
+                                fontSize: 11,
+                                color: "var(--text-muted)",
+                                fontWeight: 600,
+                                marginBottom: 8,
+                                textTransform: "uppercase",
+                                letterSpacing: "0.06em",
                               }}
                             >
-                              {line.key && (
-                                <div
-                                  style={{
-                                    minWidth: 120,
-                                    padding: "8px 12px",
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    color: "var(--text-secondary)",
-                                    borderRight: "1px solid var(--border)",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  {line.key}
-                                </div>
-                              )}
+                              Action Taken
+                            </div>
+                            {isStructured ? (
                               <div
                                 style={{
-                                  padding: "8px 12px",
-                                  fontSize: 12,
-                                  color: "var(--text-primary)",
-                                  lineHeight: 1.5,
-                                  flex: 1,
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 8,
+                                  overflow: "hidden",
                                 }}
                               >
-                                {line.val}
+                                {lines.map((line, i) => (
+                                  <div
+                                    key={i}
+                                    style={{
+                                      display: "flex",
+                                      borderBottom:
+                                        i < lines.length - 1
+                                          ? "1px solid var(--border)"
+                                          : "none",
+                                      background:
+                                        i % 2 === 0
+                                          ? "transparent"
+                                          : "rgba(0,0,0,0.015)",
+                                    }}
+                                  >
+                                    {line.key && (
+                                      <div
+                                        style={{
+                                          minWidth: 120,
+                                          padding: "8px 12px",
+                                          fontSize: 12,
+                                          fontWeight: 600,
+                                          color: "var(--text-secondary)",
+                                          borderRight:
+                                            "1px solid var(--border)",
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        {line.key}
+                                      </div>
+                                    )}
+                                    <div
+                                      style={{
+                                        padding: "8px 12px",
+                                        fontSize: 12,
+                                        color: "var(--text-primary)",
+                                        lineHeight: 1.5,
+                                        flex: 1,
+                                      }}
+                                    >
+                                      {line.val}
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+                            ) : (
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  color: "var(--text-primary)",
+                                  lineHeight: 1.6,
+                                  padding: "10px 14px",
+                                  background: "rgba(0,0,0,0.02)",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: 8,
+                                }}
+                              >
+                                {action}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                   </div>
                 )}
 
