@@ -1,73 +1,67 @@
 """
-Mock technical assessment tools used by the Technical Assessor Agent.
-In production these would query job boards, run real skill tests, etc.
+Technical assessment tools used by the Technical Assessor Agent.
+Job requirements are fetched from the internal jobs database (PostgreSQL).
+Skill gap analysis runs locally against the fetched JD.
+Tavily is no longer used — all JD data comes from internal job postings.
 """
 from langchain_core.tools import tool
 
-# Mock job requirements database per role
-JOB_REQUIREMENTS_DB = {
-    "python developer": {
-        "required_skills": ["python", "django", "fastapi", "postgresql", "docker"],
-        "nice_to_have": ["kubernetes", "aws", "redis", "celery"],
-        "min_years": 2,
-    },
-    "frontend developer": {
-        "required_skills": ["javascript", "react", "typescript", "css", "html"],
-        "nice_to_have": ["nextjs", "tailwind", "jest"],
-        "min_years": 1,
-    },
-    "ml engineer": {
-        "required_skills": ["python", "machine learning", "deep learning", "nlp", "sql"],
-        "nice_to_have": ["langchain", "langgraph", "aws", "docker"],
-        "min_years": 3,
-    },
-    "default": {
-        "required_skills": ["python"],
-        "nice_to_have": [],
-        "min_years": 0,
-    },
-}
-
-# Mock market demand data
-MARKET_DEMAND = {
-    "python": {"demand": "Very High", "avg_salary": "$120,000", "trend": "Growing"},
-    "java":   {"demand": "High",      "avg_salary": "$115,000", "trend": "Stable"},
-    "javascript": {"demand": "Very High", "avg_salary": "$110,000", "trend": "Growing"},
-    "react":  {"demand": "Very High", "avg_salary": "$118,000", "trend": "Growing"},
-    "c++":    {"demand": "Medium",    "avg_salary": "$105,000", "trend": "Stable"},
-    "default":{"demand": "Medium",    "avg_salary": "$90,000",  "trend": "Stable"},
-}
-
 
 @tool
-def search_job_requirements(role: str = "python developer") -> dict:
+def get_job_requirements(job_id: str) -> dict:
     """
-    Search mock job board for requirements of a given role.
-    Returns required skills, nice-to-have skills, and minimum years of experience.
+    Fetch the job description and required skills for a given job_id from the
+    internal jobs database. Returns the full JD including required_skills,
+    nice_to_have, min_years, title, and description.
     """
-    role_key = role.lower().strip()
-    requirements = JOB_REQUIREMENTS_DB.get(role_key, JOB_REQUIREMENTS_DB["default"])
-    return {
-        "role": role,
-        "required_skills": requirements["required_skills"],
-        "nice_to_have": requirements["nice_to_have"],
-        "min_years_required": requirements["min_years"],
-    }
+    try:
+        from db import get_job
+        job = get_job(job_id)
+        if job:
+            return {
+                "found": True,
+                "job_id": job["id"],
+                "title": job["title"],
+                "description": job["description"],
+                "required_skills": job["required_skills"],
+                "nice_to_have": job.get("nice_to_have", []),
+                "min_years_required": job.get("min_years", 0),
+                "source": "internal_db",
+            }
+        return {
+            "found": False,
+            "job_id": job_id,
+            "message": f"No job found with id '{job_id}' in the database.",
+            "required_skills": [],
+            "nice_to_have": [],
+            "min_years_required": 0,
+            "source": "internal_db",
+        }
+    except Exception as exc:
+        return {
+            "found": False,
+            "job_id": job_id,
+            "message": f"Database error: {exc}",
+            "required_skills": [],
+            "nice_to_have": [],
+            "min_years_required": 0,
+            "source": "error",
+        }
 
 
 @tool
 def run_skill_gap_analysis(candidate_skills: list[str], required_skills: list[str]) -> dict:
     """
-    Compare candidate's skills against required skills and compute a match score.
+    Compare candidate skills against required skills from the JD and compute a match score.
     Returns matched skills, missing skills, score (0-100), and match verdict.
     """
     candidate_set = {s.lower().strip() for s in candidate_skills}
     required_set  = {s.lower().strip() for s in required_skills}
 
-    matched  = list(candidate_set & required_set)
-    missing  = list(required_set - candidate_set)
+    matched = list(candidate_set & required_set)
+    missing = list(required_set - candidate_set)
 
-    score = int((len(matched) / len(required_set)) * 100) if required_set else 0
+    score   = int((len(matched) / len(required_set)) * 100) if required_set else 0
     verdict = "Match" if score >= 60 else "No Match"
 
     return {
@@ -75,20 +69,31 @@ def run_skill_gap_analysis(candidate_skills: list[str], required_skills: list[st
         "missing_skills": missing,
         "skill_score": score,
         "skill_match": verdict,
-        "summary": f"Matched {len(matched)}/{len(required_set)} required skills. Score: {score}/100 → {verdict}",
+        "summary": (
+            f"Matched {len(matched)}/{len(required_set)} required skills. "
+            f"Score: {score}/100 → {verdict}"
+        ),
     }
 
 
 @tool
-def get_market_demand(skill: str) -> dict:
+def list_current_jobs() -> list[dict]:
     """
-    Retrieve mock market demand data for a given skill.
-    Returns demand level, average salary, and market trend.
+    Return all currently active job postings from the internal database.
+    Useful for the agent to present available roles or select the right job_id.
     """
-    data = MARKET_DEMAND.get(skill.lower().strip(), MARKET_DEMAND["default"])
-    return {
-        "skill": skill,
-        "market_demand": data["demand"],
-        "avg_salary": data["avg_salary"],
-        "trend": data["trend"],
-    }
+    try:
+        from db import list_jobs
+        jobs = list_jobs(status="current")
+        return [
+            {
+                "job_id": j["id"],
+                "title": j["title"],
+                "department": j["department"],
+                "required_skills": j["required_skills"],
+                "min_years": j["min_years"],
+            }
+            for j in jobs
+        ]
+    except Exception as exc:
+        return [{"error": str(exc)}]

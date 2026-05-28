@@ -1590,6 +1590,7 @@
 
       const NAV_ITEMS = [
         { id: "dashboard", label: "Dashboard", icon: "◼" },
+        { id: "jobs", label: "Job Postings", icon: "📋" },
         { id: "screen", label: "Screen Candidate", icon: "✦" },
         { id: "pipeline", label: "Candidates", icon: "≡" },
         { id: "action-log", label: "Action Log", icon: "◷" },
@@ -1601,34 +1602,34 @@
           label: "Senior Python Dev (8yr)",
           job_role: "python developer",
           application_text: `Name: Alice Johnson
-I am a Senior Software Engineer with 8 years of experience specializing in Python development.
-Skills: Python, Django, FastAPI, PostgreSQL, Docker, AWS, Redis, Kubernetes
-I have led multiple production deployments and have strong experience with microservices architecture.
-References available upon request.`,
+      I am a Senior Software Engineer with 8 years of experience specializing in Python development.
+      Skills: Python, Django, FastAPI, PostgreSQL, Docker, AWS, Redis, Kubernetes
+      I have led multiple production deployments and have strong experience with microservices architecture.
+      References available upon request.`,
         },
         seniorJava: {
           label: "Senior Java Dev (10yr)",
           job_role: "python developer",
           application_text: `Name: Bob Smith
-I am a Senior Java Developer with 10 years of experience in enterprise systems.
-Skills: Java, Spring Boot, Hibernate, SQL, Kubernetes, Microservices
-I am looking to expand into Python development and am eager to learn.`,
+      I am a Senior Java Developer with 10 years of experience in enterprise systems.
+      Skills: Java, Spring Boot, Hibernate, SQL, Kubernetes, Microservices
+      I am looking to expand into Python development and am eager to learn.`,
         },
         entryCpp: {
           label: "Entry C++ Dev (1yr)",
           job_role: "python developer",
           application_text: `Name: Carol White
-Recent CS graduate with 1 year of experience.
-Skills: C++, Data Structures, Algorithms
-I am a quick learner and excited to start my career in software development.`,
+      Recent CS graduate with 1 year of experience.
+      Skills: C++, Data Structures, Algorithms
+      I am a quick learner and excited to start my career in software development.`,
         },
         midPython: {
           label: "Mid Python Dev (4yr)",
           job_role: "python developer",
           application_text: `Name: David Chen
-Software Developer with 4 years of experience in backend development.
-Skills: Python, FastAPI, PostgreSQL, REST APIs
-I have built several production APIs and enjoy working with modern Python frameworks.`,
+      Software Developer with 4 years of experience in backend development.
+      Skills: Python, FastAPI, PostgreSQL, REST APIs
+      I have built several production APIs and enjoy working with modern Python frameworks.`,
         },
       };
 
@@ -2332,6 +2333,7 @@ I have built several production APIs and enjoy working with modern Python framew
       // ─────────────────────────────────────────────────────────────────────────────
       function ScreenPage() {
         const [jobRole, setJobRole] = useState("python developer");
+        const [jobId, setJobId] = useState("");
         const [appText, setAppText] = useState("");
         const [inputMode, setInputMode] = useState("text"); // "text" | "file"
         const [uploadFile, setUploadFile] = useState(null);
@@ -2385,6 +2387,7 @@ I have built several production APIs and enjoy working with modern Python framew
               const formData = new FormData();
               formData.append("file", uploadFile);
               formData.append("job_role", jobRole);
+              if (jobId) formData.append("job_id", jobId);
               apiPromise = fetch(API_BASE + "/api/candidates/upload", {
                 method: "POST",
                 body: formData,
@@ -2404,6 +2407,7 @@ I have built several production APIs and enjoy working with modern Python framew
                 body: JSON.stringify({
                   application_text: appText,
                   job_role: jobRole,
+                  ...(jobId ? { job_id: jobId } : {}),
                 }),
               });
             }
@@ -2547,6 +2551,25 @@ I have built several production APIs and enjoy working with modern Python framew
                       <option value="backend engineer">Backend Engineer</option>
                       <option value="devops engineer">DevOps Engineer</option>
                     </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>
+                      Match Against Job Posting{" "}
+                      <span
+                        style={{ fontWeight: 400, color: "var(--text-muted)" }}
+                      >
+                        (optional — paste Job ID from Job Postings)
+                      </span>
+                    </label>
+                    <input
+                      id="job-id-input"
+                      type="text"
+                      value={jobId}
+                      onChange={(e) => setJobId(e.target.value)}
+                      placeholder="e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"
+                      style={{ fontFamily: "monospace", fontSize: 13 }}
+                    />
                   </div>
 
                   {/* Input mode toggle */}
@@ -3984,6 +4007,362 @@ I have built several production APIs and enjoy working with modern Python framew
       }
 
       // ─────────────────────────────────────────────────────────────────────────────
+      // ─────────────────────────────────────────────────────────────────────────────
+      // Jobs Page
+      // ─────────────────────────────────────────────────────────────────────────────
+      function JobsPage({ onNavigate }) {
+        const [jobs, setJobs] = React.useState([]);
+        const [filter, setFilter] = React.useState("all");
+        const [loading, setLoading] = React.useState(true);
+        const [error, setError] = React.useState(null);
+        const [showForm, setShowForm] = React.useState(false);
+        const [editJob, setEditJob] = React.useState(null);
+        const [expandedId, setExpandedId] = React.useState(null);
+        const [saving, setSaving] = React.useState(false);
+        const emptyForm = {
+          title: "", department: "", location: "Remote",
+          employment_type: "full-time", status: "current",
+          description: "", required_skills: "", nice_to_have: "",
+          min_years: 0, salary_range: "", closes_at: "",
+        };
+        const [form, setForm] = React.useState(emptyForm);
+
+        const fetchJobs = React.useCallback(async () => {
+          setLoading(true);
+          setError(null);
+          try {
+            const url = filter === "all" ? "/api/jobs" : "/api/jobs?status=" + filter;
+            const data = await apiFetch(url);
+            setJobs(data);
+          } catch (e) {
+            setError(e.message);
+          } finally {
+            setLoading(false);
+          }
+        }, [filter]);
+
+        React.useEffect(() => { fetchJobs(); }, [fetchJobs]);
+
+        const openCreate = () => {
+          setEditJob(null);
+          setForm(emptyForm);
+          setShowForm(true);
+        };
+
+        const openEdit = (job) => {
+          setEditJob(job);
+          setForm({
+            title: job.title, department: job.department, location: job.location,
+            employment_type: job.employment_type, status: job.status,
+            description: job.description,
+            required_skills: (job.required_skills || []).join(", "),
+            nice_to_have: (job.nice_to_have || []).join(", "),
+            min_years: job.min_years, salary_range: job.salary_range,
+            closes_at: job.closes_at ? job.closes_at.slice(0, 10) : "",
+          });
+          setShowForm(true);
+        };
+
+        const handleDelete = async (id) => {
+          if (!confirm("Delete this job posting?")) return;
+          try {
+            await apiFetch("/api/jobs/" + id, { method: "DELETE" });
+            if (expandedId === id) setExpandedId(null);
+            fetchJobs();
+          } catch (e) { alert("Delete failed: " + e.message); }
+        };
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setSaving(true);
+          const payload = {
+            ...form,
+            required_skills: form.required_skills.split(",").map(s => s.trim()).filter(Boolean),
+            nice_to_have: form.nice_to_have.split(",").map(s => s.trim()).filter(Boolean),
+            min_years: parseInt(form.min_years) || 0,
+            closes_at: form.closes_at ? new Date(form.closes_at).toISOString() : null,
+          };
+          try {
+            if (editJob) {
+              await apiFetch("/api/jobs/" + editJob.id, { method: "PUT", body: JSON.stringify(payload) });
+            } else {
+              await apiFetch("/api/jobs", { method: "POST", body: JSON.stringify(payload) });
+            }
+            setShowForm(false);
+            fetchJobs();
+          } catch (e) {
+            alert("Save failed: " + e.message);
+          } finally {
+            setSaving(false);
+          }
+        };
+
+        const setField = (key, val) => setForm(prev => ({ ...prev, [key]: val }));
+
+        const STATUS_COLOR = { current: "var(--clr-success)", upcoming: "var(--clr-warn)", past: "var(--text-muted)" };
+        const STATUS_BG    = { current: "rgba(34,197,94,0.1)", upcoming: "rgba(245,158,11,0.1)", past: "rgba(148,163,184,0.1)" };
+
+        const FILTERS = [
+          { key: "all",      label: "All" },
+          { key: "current",  label: "Current" },
+          { key: "upcoming", label: "Upcoming" },
+          { key: "past",     label: "Past" },
+        ];
+
+        const counts = { all: jobs.length };
+        ["current", "upcoming", "past"].forEach(s => { counts[s] = jobs.filter(j => j.status === s).length; });
+
+        const inputStyle = {
+          width: "100%", boxSizing: "border-box", padding: "9px 12px",
+          border: "1px solid var(--border)", borderRadius: 8, fontSize: 14,
+          background: "var(--bg-main)", color: "var(--text-primary)", fontFamily: "inherit",
+        };
+
+        return React.createElement("div", { className: "page-content" },
+
+          /* ── Page header ── */
+          React.createElement("div", { className: "section-header mb-24" },
+            React.createElement("div", null,
+              React.createElement("div", { className: "section-title" }, "Job Postings"),
+              React.createElement("div", { className: "section-sub" },
+                jobs.length + " posting" + (jobs.length !== 1 ? "s" : "") + " \u2022 Create and manage your internal job descriptions"
+              ),
+            ),
+            React.createElement("button", {
+              className: "btn btn-success",
+              onClick: openCreate,
+            }, "+ New Job Posting"),
+          ),
+
+          /* ── Error banner ── */
+          error && React.createElement("div", { className: "error-banner" },
+            React.createElement("span", null, "\u26A0"), " ", error
+          ),
+
+          /* ── Filter tabs ── */
+          React.createElement("div", { className: "filter-tabs" },
+            FILTERS.map(f =>
+              React.createElement("button", {
+                key: f.key,
+                className: "filter-tab" + (filter === f.key ? " active" : ""),
+                onClick: () => setFilter(f.key),
+              }, f.label + " (" + (counts[f.key] ?? 0) + ")")
+            )
+          ),
+
+          /* ── Loading skeletons ── */
+          loading && React.createElement("div", { className: "flex-col", style: { gap: 10 } },
+            [1,2,3,4].map(i =>
+              React.createElement("div", { key: i, className: "skeleton", style: { height: 72, borderRadius: 12 } })
+            )
+          ),
+
+          /* ── Empty state ── */
+          !loading && jobs.length === 0 && React.createElement("div", { className: "card" },
+            React.createElement("div", { className: "empty-state" },
+              React.createElement("div", { className: "empty-icon" }, "\uD83D\uDCCB"),
+              React.createElement("div", { className: "empty-title" }, "No job postings found"),
+              React.createElement("div", { className: "empty-desc" },
+                filter === "all" ? "Create your first job posting to get started." : "No " + filter + " jobs."
+              ),
+              React.createElement("button", { className: "btn btn-primary mt-12", onClick: openCreate }, "+ New Job Posting"),
+            )
+          ),
+
+          /* ── Jobs list ── */
+          !loading && jobs.length > 0 && React.createElement("div", { className: "candidates-grid" },
+            jobs.map(job => {
+              const expanded = expandedId === job.id;
+              return React.createElement("div", {
+                key: job.id,
+                className: "candidate-card" + (expanded ? " expanded" : ""),
+              },
+                /* Card header row */
+                React.createElement("div", {
+                  className: "candidate-header",
+                  onClick: () => setExpandedId(expanded ? null : job.id),
+                  style: { cursor: "pointer" },
+                },
+                  /* Left: status badge + title */
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0 } },
+                    React.createElement("span", {
+                      style: {
+                        background: STATUS_BG[job.status], color: STATUS_COLOR[job.status],
+                        padding: "3px 10px", borderRadius: 20, fontSize: 11,
+                        fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5,
+                        whiteSpace: "nowrap", flexShrink: 0,
+                      }
+                    }, job.status),
+                    React.createElement("div", { style: { minWidth: 0 } },
+                      React.createElement("div", { className: "candidate-name" }, job.title),
+                      React.createElement("div", { className: "candidate-meta" },
+                        [job.department, job.location, job.employment_type].filter(Boolean).join(" \u00B7 ")
+                      ),
+                    ),
+                  ),
+                  /* Right: salary + chevron */
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, flexShrink: 0 } },
+                    job.salary_range && React.createElement("span", {
+                      style: { fontSize: 13, fontWeight: 600, color: "var(--accent)", whiteSpace: "nowrap" }
+                    }, job.salary_range),
+                    React.createElement("span", {
+                      style: { fontSize: 18, color: "var(--text-muted)", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s", display: "inline-block" }
+                    }, "\u2304"),
+                  ),
+                ),
+
+                /* Expanded details */
+                expanded && React.createElement("div", { style: { marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" } },
+                  job.description && React.createElement("p", {
+                    style: { margin: "0 0 16px", fontSize: 14, color: "var(--text-secondary)", lineHeight: 1.6 }
+                  }, job.description),
+
+                  React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } },
+                    React.createElement("div", null,
+                      React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", marginBottom: 8 } }, "Required Skills"),
+                      React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+                        (job.required_skills || []).map(s =>
+                          React.createElement("span", { key: s, style: { background: "rgba(37,99,235,0.1)", color: "#2563eb", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600 } }, s)
+                        )
+                      ),
+                    ),
+                    React.createElement("div", null,
+                      React.createElement("div", { style: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: "var(--text-muted)", marginBottom: 8 } }, "Nice to Have"),
+                      React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+                        (job.nice_to_have || []).map(s =>
+                          React.createElement("span", { key: s, style: { background: "rgba(124,58,237,0.1)", color: "#7c3aed", padding: "3px 10px", borderRadius: 20, fontSize: 12, fontWeight: 600 } }, s)
+                        )
+                      ),
+                    ),
+                  ),
+
+                  React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, borderTop: "1px solid var(--border)" } },
+                    React.createElement("div", { style: { display: "flex", gap: 16, fontSize: 13, color: "var(--text-muted)" } },
+                      React.createElement("span", null, "Min. " + job.min_years + " yr exp"),
+                      job.closes_at && React.createElement("span", null, "Closes: " + new Date(job.closes_at).toLocaleDateString()),
+                      React.createElement("span", { style: { fontFamily: "monospace", fontSize: 11, color: "var(--text-muted)" } }, "ID: " + job.id.slice(0, 8) + "\u2026"),
+                    ),
+                    React.createElement("div", { style: { display: "flex", gap: 8 } },
+                      React.createElement("button", {
+                        className: "btn btn-sm btn-ghost",
+                        onClick: () => { navigator.clipboard.writeText(job.id); },
+                      }, "Copy ID"),
+                      React.createElement("button", {
+                        className: "btn btn-sm",
+                        style: { background: "rgba(34,197,94,0.1)", color: "var(--clr-success)", border: "1px solid rgba(34,197,94,0.3)" },
+                        onClick: () => {
+                          onNavigate("screen");
+                          setTimeout(() => {
+                            const el = document.getElementById("job-id-input");
+                            if (el) { el.value = job.id; el.dispatchEvent(new Event("input", { bubbles: true })); }
+                          }, 300);
+                        },
+                      }, "Screen Against"),
+                      React.createElement("button", {
+                        className: "btn btn-sm",
+                        style: { background: "rgba(37,99,235,0.1)", color: "#2563eb", border: "1px solid rgba(37,99,235,0.3)" },
+                        onClick: () => openEdit(job),
+                      }, "Edit"),
+                      React.createElement("button", {
+                        className: "btn btn-sm btn-danger",
+                        onClick: () => handleDelete(job.id),
+                      }, "Delete"),
+                    ),
+                  ),
+                ),
+              );
+            })
+          ),
+
+          /* ── Create / Edit modal ── */
+          showForm && React.createElement("div", {
+            style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 },
+            onClick: e => { if (e.target === e.currentTarget) setShowForm(false); },
+          },
+            React.createElement("div", {
+              style: { background: "var(--bg-card)", borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "90vh", overflowY: "auto", padding: 32, boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }
+            },
+              React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } },
+                React.createElement("h2", { style: { margin: 0, fontSize: 20, fontWeight: 700, color: "var(--text-primary)" } },
+                  editJob ? "Edit Job Posting" : "New Job Posting"
+                ),
+                React.createElement("button", { className: "btn btn-ghost btn-sm", onClick: () => setShowForm(false) }, "\u2715"),
+              ),
+              React.createElement("form", { onSubmit: handleSubmit },
+                /* Title */
+                React.createElement("div", { className: "form-group" },
+                  React.createElement("label", null, "Job Title *"),
+                  React.createElement("input", { required: true, value: form.title, onChange: e => setField("title", e.target.value), placeholder: "e.g. Senior Python Developer", style: inputStyle }),
+                ),
+                /* Dept + Location */
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 } },
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Department"),
+                    React.createElement("input", { value: form.department, onChange: e => setField("department", e.target.value), placeholder: "Engineering", style: inputStyle }),
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Location"),
+                    React.createElement("input", { value: form.location, onChange: e => setField("location", e.target.value), placeholder: "Remote", style: inputStyle }),
+                  ),
+                ),
+                /* Type + Status + Min years */
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 16 } },
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Type"),
+                    React.createElement("select", { value: form.employment_type, onChange: e => setField("employment_type", e.target.value), style: inputStyle },
+                      ["full-time","part-time","contract","internship"].map(t => React.createElement("option", { key: t, value: t }, t))
+                    ),
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Status"),
+                    React.createElement("select", { value: form.status, onChange: e => setField("status", e.target.value), style: inputStyle },
+                      ["current","upcoming","past"].map(t => React.createElement("option", { key: t, value: t }, t))
+                    ),
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Min Years"),
+                    React.createElement("input", { type: "number", min: 0, value: form.min_years, onChange: e => setField("min_years", e.target.value), style: inputStyle }),
+                  ),
+                ),
+                /* Salary + Closes */
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 } },
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Salary Range"),
+                    React.createElement("input", { value: form.salary_range, onChange: e => setField("salary_range", e.target.value), placeholder: "$100,000 \u2013 $130,000", style: inputStyle }),
+                  ),
+                  React.createElement("div", null,
+                    React.createElement("label", { style: { fontSize: 12, fontWeight: 600, color: "var(--text-muted)", display: "block", marginBottom: 6 } }, "Closes Date"),
+                    React.createElement("input", { type: "date", value: form.closes_at, onChange: e => setField("closes_at", e.target.value), style: inputStyle }),
+                  ),
+                ),
+                /* Description */
+                React.createElement("div", { className: "form-group" },
+                  React.createElement("label", null, "Job Description"),
+                  React.createElement("textarea", { rows: 4, value: form.description, onChange: e => setField("description", e.target.value), placeholder: "Describe the role, responsibilities, and team...", style: { ...inputStyle, resize: "vertical" } }),
+                ),
+                /* Required skills */
+                React.createElement("div", { className: "form-group" },
+                  React.createElement("label", null, "Required Skills ", React.createElement("span", { style: { fontWeight: 400, color: "var(--text-muted)" } }, "(comma-separated)")),
+                  React.createElement("input", { value: form.required_skills, onChange: e => setField("required_skills", e.target.value), placeholder: "python, fastapi, postgresql, docker", style: inputStyle }),
+                ),
+                /* Nice to have */
+                React.createElement("div", { className: "form-group" },
+                  React.createElement("label", null, "Nice to Have ", React.createElement("span", { style: { fontWeight: 400, color: "var(--text-muted)" } }, "(comma-separated)")),
+                  React.createElement("input", { value: form.nice_to_have, onChange: e => setField("nice_to_have", e.target.value), placeholder: "kubernetes, redis, celery", style: inputStyle }),
+                ),
+                /* Form buttons */
+                React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 8 } },
+                  React.createElement("button", { type: "button", className: "btn btn-ghost", onClick: () => setShowForm(false) }, "Cancel"),
+                  React.createElement("button", { type: "submit", className: "btn btn-primary", disabled: saving },
+                    saving ? "Saving\u2026" : (editJob ? "Save Changes" : "Create Job")
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
       // Root App
       // ─────────────────────────────────────────────────────────────────────────────
       function App() {
@@ -4106,6 +4485,7 @@ I have built several production APIs and enjoy working with modern Python framew
 
               {/* Pages */}
               {page === "dashboard" && <DashboardPage onNavigate={setPage} />}
+              {page === "jobs" && <JobsPage onNavigate={setPage} />}
               {page === "screen" && <ScreenPage />}
               {page === "pipeline" && <PipelinePage onNavigate={setPage} />}
               {page === "action-log" && <ActionLogPage />}
